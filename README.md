@@ -184,7 +184,7 @@ rows = conn.execute(
 
 ```python
 # ANTES
-FAKE_API_KEY = "sk_live_51Hf8NxT3kL9mQvZ2pYcRb6WdAe7FgJhK0LsZnMxOv4"
+FAKE_API_KEY = "DEMO_STRIPE_API_KEY_NOT_A_REAL_SECRET"
 JWT_SECRET = "sup3r-s3cret-demo-jwt-secret-please-rotate"
 DEBUG = True
 
