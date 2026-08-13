@@ -1,0 +1,13 @@
+{
+  "sca": {
+    "fail_on": ["critical", "high"],
+    "warn_on": ["medium", "low"]
+  },
+  "sast": {
+    "fail_on": ["critical", "high"],
+    "warn_on": ["medium", "low"]
+  },
+  "secrets": {
+    "fail_on": "any"
+  }
+}

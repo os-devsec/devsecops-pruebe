@@ -1,0 +1,8 @@
+# Version INSEGURA (contiene dependencias vulnerables a proposito).
+# Version remediada en README.md (seccion "Remediacion").
+fastapi==0.110.0
+uvicorn==0.23.2
+jinja2==3.0.3
+PyJWT==2.8.0
+pytest==8.3.4
+httpx==0.27.2
