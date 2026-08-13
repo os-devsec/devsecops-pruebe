@@ -5,3 +5,8 @@ __pycache__/
 app/demo.db
 *.log
 .env
+
+# Artefactos generados por Snyk / Security Gate (no se versionan)
+security-gate-report.md
+snyk-oss.json
+snyk-code.json

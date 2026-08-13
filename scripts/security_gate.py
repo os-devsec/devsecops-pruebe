@@ -13,31 +13,40 @@ import sys
 
 POLICY_PATH = os.environ.get("SECURITY_POLICY_PATH", "security-policy.json")
 
-SECRET_KEYWORDS = (
-    "secret",
-    "credential",
+# Marcas para detectar secretos en reglas de Snyk Code (rule id / mensaje).
+SECRET_RULE_MARKERS = ("secret", "credential")
+SECRET_STRONG_MARKERS = (
     "api key",
     "apikey",
-    "api_key",
-    "password",
-    "passwd",
-    "hardcoded",
-    "private key",
     "access key",
+    "private key",
     "bearer token",
+    "authorization",
 )
 
 SEVERITY_ORDER = ["critical", "high", "medium", "low"]
 
 
-def load_json(path: str) -> dict:
-    try:
-        # utf-8-sig tolera el BOM que algunos editores/shells (p.ej. PowerShell)
-        # agregan al escribir JSON en Windows.
-        with open(path, encoding="utf-8-sig") as fh:
-            return json.load(fh)
-    except (OSError, json.JSONDecodeError):
-        return {}
+def load_json(path: str) -> tuple[dict, bool]:
+    """Carga JSON tolerando BOM (en Windows, PowerShell redirige a UTF-16).
+
+    Devuelve (data, ok). ok=False si el archivo no existe, no es JSON valido,
+    o la herramienta devolvio un objeto de error (p.ej. Snyk con exit != 0).
+    """
+    if not os.path.exists(path):
+        return {}, False
+    for enc in ("utf-8-sig", "utf-16", "latin-1"):
+        try:
+            with open(path, encoding=enc) as fh:
+                data = json.load(fh)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        if isinstance(data, dict) and "error" in data and not (
+            "vulnerabilities" in data or "runs" in data
+        ):
+            return {}, False
+        return data, True
+    return {}, False
 
 
 def load_policy() -> dict:
@@ -132,11 +141,20 @@ def parse_code(data: dict) -> list[dict]:
 
 
 def is_secret(f: dict) -> bool:
-    hay = " ".join(str(f[k]).lower() for k in ("title", "package", "vuln"))
-    return any(kw in hay for kw in SECRET_KEYWORDS)
+    """Clasifica un hallazgo como secreto si la regla es de credenciales
+    (p.ej. python/HardcodedNonCryptoSecret) o el mensaje senala una API key.
+
+    No se clasifican como secretos los hallazgos genericos de 'password
+    hardcodeado' (baja severidad), que se tratan como aviso normal.
+    """
+    rule = str(f.get("package", "")).lower()
+    title = str(f.get("title", "")).lower()
+    if any(m in rule for m in SECRET_RULE_MARKERS):
+        return True
+    return any(kw in title for kw in SECRET_STRONG_MARKERS)
 
 
-def build_report(fail, warn, secret, counts, decision) -> str:
+def build_report(fail, warn, secret, counts, decision, scan_failed=()) -> str:
     lines = [
         "# Resultado del Security Gate",
         "",
@@ -145,11 +163,21 @@ def build_report(fail, warn, secret, counts, decision) -> str:
         "Resumen: "
         f"SCA={counts['sca']} | SAST={counts['sast']} | Secretos={counts['secret']}",
         "",
-        "## Bloquean (FAIL)",
-        "",
-        "| Severidad | Fuente | Problema | Paquete/Regla | Ubicacion | Fix |",
-        "|---|---|---|---|---|---|",
     ]
+    if scan_failed:
+        lines.append(
+            "## ATENCION: no se pudieron capturar resultados de Snyk: "
+            + ", ".join(scan_failed)
+        )
+        lines.append(
+            "El gate falla porque no se pudo confirmar el estado de seguridad "
+            "(fail-closed). Revisa el log del job."
+        )
+        lines.append("")
+    lines.append("## Bloquean (FAIL)")
+    lines.append("")
+    lines.append("| Severidad | Fuente | Problema | Paquete/Regla | Ubicacion | Fix |")
+    lines.append("|---|---|---|---|---|---|")
     for f in fail:
         fix = f["fix"].replace("|", "/") or "-"
         lines.append(
@@ -187,12 +215,18 @@ def main(argv) -> int:
     oss_path, code_path = argv[0], argv[1]
     report_path = argv[2] if len(argv) > 2 else "security-gate-report.md"
 
-    oss = load_json(oss_path)
-    code = load_json(code_path)
+    oss, oss_ok = load_json(oss_path)
+    code, code_ok = load_json(code_path)
     policy = load_policy()
 
-    sca_findings = parse_oss(oss)
-    sast_findings = parse_code(code)
+    scan_failed = []
+    if not oss_ok:
+        scan_failed.append(os.path.basename(oss_path))
+    if not code_ok:
+        scan_failed.append(os.path.basename(code_path))
+
+    sca_findings = parse_oss(oss) if oss_ok else []
+    sast_findings = parse_code(code) if code_ok else []
     findings = sca_findings + sast_findings
 
     fail_on = set(policy.get("sca", {}).get("fail_on", [])) | set(
@@ -215,7 +249,9 @@ def main(argv) -> int:
         and f["severity"] not in fail_on
     ]
 
-    if secret:
+    if scan_failed:
+        decision = "FAIL - no se pudieron capturar resultados de Snyk"
+    elif secret:
         decision = "FAIL - se detectaron secretos expuestos (bloqueante)"
     elif fail:
         decision = "FAIL - hay vulnerabilidades criticas/altas"
@@ -227,14 +263,14 @@ def main(argv) -> int:
         "sast": len(sast_findings),
         "secret": len(secret),
     }
-    report = build_report(fail, warn, secret, counts, decision)
+    report = build_report(fail, warn, secret, counts, decision, scan_failed)
     with open(report_path, "w", encoding="utf-8") as fh:
         fh.write(report)
 
     print(report)
     print("---")
     print(f"Security Gate: {decision}")
-    return 1 if (fail or secret) else 0
+    return 1 if (fail or secret or scan_failed) else 0
 
 
 if __name__ == "__main__":

@@ -37,22 +37,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Escaneo de dependencias
-        uses: snyk/actions/python@master
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Instalar Snyk CLI
+        run: npm install -g snyk
+      - name: Instalar dependencias (arbol SCA)
+        run: pip install -r requirements.txt
+      - name: Escaneo de dependencias (todas las severidades)
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          command: test
-          args: --severity-threshold=high --file=requirements.txt
+        run: |
+          snyk test --file=requirements.txt
+          rc=$?
+          if [ $rc -eq 1 ]; then
+            echo "::warning::Snyk Open Source encontro vulnerabilidades. La decision de bloqueo la toma el job Security Gate."
+            exit 0
+          fi
+          exit $rc
       - name: Monitor (registro continuo en Snyk)
-        if: always()
         continue-on-error: true
-        uses: snyk/actions/python@master
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          command: monitor
-          args: --file=requirements.txt
+        run: snyk monitor --file=requirements.txt
 
   snyk-code:
     name: Snyk Code (SAST)
@@ -60,16 +67,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Escaneo estatico de codigo
-        uses: snyk/actions/python@master
+      - name: Instalar Snyk CLI
+        run: npm install -g snyk
+      - name: Escaneo estatico de codigo (todas las severidades)
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          command: code test
-          args: --severity-threshold=high
+        run: |
+          snyk code test
+          rc=$?
+          if [ $rc -eq 1 ]; then
+            echo "::warning::Snyk Code encontro hallazgos. La decision de bloqueo la toma el job Security Gate."
+            exit 0
+          fi
+          exit $rc
 
   security-gate:
-    name: Security Gate
+    name: Security Gate (policy)
     needs: [snyk-oss, snyk-code]
     if: always()
     runs-on: ubuntu-latest
@@ -80,7 +93,9 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Instalar Snyk CLI
         run: npm install -g snyk
-      - name: Capturar resultados de Snyk
+      - name: Instalar dependencias (arbol SCA)
+        run: pip install -r requirements.txt
+      - name: Capturar resultados de Snyk (todas las severidades)
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: |

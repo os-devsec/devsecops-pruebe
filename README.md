@@ -67,14 +67,22 @@ local y en GitHub sin infraestructura cloud.
 ```
 Developer -> push/PR -> ci.yml
   1. test (pytest)              feedback rápido, siempre corre
-  2. snyk-oss (SCA)             snyk test --severity-threshold=high
-  3. snyk-code (SAST)           snyk code test --severity-threshold=high
+  2. snyk-oss (SCA)             escanea TODAS las severidades, NO bloquea (solo avisa)
+  3. snyk-code (SAST)           escanea TODAS las severidades, NO bloquea (solo avisa)
   4. security-gate              agrega JSONs, aplica policy, FAIL/PASS + PR comment
   5. docker-build               verifica que la imagen compila (independiente del gate)
   -------------------------------------------------------------------------------
   6. Deploy (solo main)         se dispara SOLO si el workflow CI terminó con éxito
                                (workflow_run conclusion == success) -> GHCR + smoke test
 ```
+
+- Los jobs **snyk-oss** y **snyk-code** reportan **todos** los hallazgos (critical/high/
+  medium/low) como anotaciones de warning. **No bloquean**: si hay vulnerabilidades solo
+  avisan con `::warning::` y terminan OK; fallan únicamente ante un error de la
+  herramienta (p.ej. token inválido o escaneo roto).
+- La **decisión de bloqueo es exclusiva del Security Gate**, que aplica la política de
+  `security-policy.json` sobre los JSON completos. Así todo hallazgo queda visible en el
+  PR, pero solo lo crítico/alto (y los secretos) detienen el merge.
 
 El job `Deploy` usa `workflow_run` para que **nunca se despliegue código que no haya
 superado el Security Gate**.
@@ -158,7 +166,7 @@ snyk code test --json > snyk-code.json   # útil para el Security Gate
 | Paso | Acción | Resultado |
 |---|---|---|
 | 1 | Commit inicial con la app **insegura** | - |
-| 2 | Abre un PR contra `main` | CI corre: tests PASS, **snyk-oss FAIL**, **snyk-code FAIL**, **gate FAIL** |
+| 2 | Abre un PR contra `main` | CI corre: tests PASS, **snyk-oss y snyk-code muestran hallazgos (warning)**, **gate FAIL** |
 | 3 | Revisa el comentario del gate en el PR | Lista de hallazgos con ubicación y fix |
 | 4 | Remedia **una vulnerabilidad por commit** (sección 10) | Rescan en el mismo PR |
 | 5 | Cuando el gate dé **PASS**, mergea | El `Deploy` corre sobre `main` |
