@@ -1,0 +1,15 @@
+# .snyk - Politica de gobernanza de Snyk (plantilla de ejemplo)
+#
+# En esta demo NO se ignora ninguna vulnerabilidad: queremos que el
+# pipeline falle hasta que el codigo se remedie.
+#
+# Uso real: cuando una vulnerabilidad tiene un plan de mitigacion
+# aceptado, se documenta aqui con motivo y caducidad (auditable).
+version: v1.25.0
+ignore:
+  # Ejemplo (descomentado, ignoraria el hallazgo durante N dias):
+  # SNYK-PYTHON-JINJA2-XXXX:
+  #   - '*':
+  #       reason: Mitigacion temporal aceptada por el equipo de seguridad
+  #       expires: 2026-12-31T00:00:00.000Z
+  {}

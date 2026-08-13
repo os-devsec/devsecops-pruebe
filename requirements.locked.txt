@@ -1,0 +1,8 @@
+# Version REMEDIADA (referencia). Sustituye el contenido de
+# requirements.txt cuando corrijas las dependencias vulnerables.
+# fastapi==0.115.12
+# uvicorn==0.34.0
+# jinja2==3.1.5
+# PyJWT==2.8.0
+# pytest==8.3.4
+# httpx==0.27.2
